@@ -1,0 +1,75 @@
+import { test, expect } from "@playwright/test";
+import { pilots } from "../../src/data/manifest";
+
+test("pilot availability is grouped by aircraft and pilots can enroll for both planes", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-10-28T12:00:00Z"));
+  await page.goto("/#calendar");
+  const friday = page.locator(".calendar-day").filter({ has: page.locator('time[datetime="2026-10-30"]') });
+  await expect(friday.locator(".calendar-plane-pilots")).toHaveCount(2);
+  await expect(friday.locator(".calendar-plane-pilots").first()).toContainText(pilots[0].name);
+  const saturday = page.locator(".calendar-day").filter({ has: page.locator('time[datetime="2026-10-31"]') });
+  await expect(saturday.locator(".calendar-plane-pilots").first()).toContainText(pilots[0].name);
+  await page.getByRole("combobox", { name: "Kenen näkymä", exact: true }).selectOption(pilots[0].id);
+  await page.getByRole("button", { name: "Avaa 28.10.2026", exact: true }).click();
+  await page.getByRole("button", { name: "Ilmoittaudu", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("Valitse vähintään yksi lentokone.");
+  await page.getByRole("checkbox", { name: "EKO", exact: true }).check();
+  await page.getByRole("checkbox", { name: "CVE", exact: true }).check();
+  await page.getByRole("button", { name: "Ilmoittaudu", exact: true }).click();
+  await expect(page.locator(".calendar-pilot-availability li")).toHaveText([pilots[0].name, pilots[0].name]);
+  await page.reload();
+  await page.getByRole("combobox", { name: "Kenen näkymä", exact: true }).selectOption(pilots[0].id);
+  await page.getByRole("button", { name: "Avaa 28.10.2026", exact: true }).click();
+  await expect(page.getByRole("checkbox", { name: "EKO", exact: true })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "CVE", exact: true })).toBeChecked();
+});
+
+test("day enrolments link members, allow one qualified role and persist cancellation", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-10-28T12:00:00Z"));
+  await page.goto("/#calendar");
+  await page.getByRole("combobox", { name: "Kenen näkymä", exact: true }).selectOption("member-demo-001");
+  await page.getByRole("button", { name: "Avaa 28.10.2026", exact: true }).click();
+  const role = page.getByRole("combobox", { name: "Osallistun roolissa", exact: true });
+  await expect(role.getByRole("option")).toHaveCount(3);
+  await role.selectOption("Licensed");
+  await page.getByRole("button", { name: "Ilmoittaudu", exact: true }).click();
+  await expect(page.locator(".calendar-enrolled-list li")).toHaveText(["Ilkka Pihlaniemi"]);
+  await role.selectOption("Instructor");
+  await page.getByRole("button", { name: "Päivitä ilmoittautuminen", exact: true }).click();
+  await expect(page.locator(".calendar-enrolled-list li")).toHaveCount(1);
+  await expect(page.locator(".calendar-enrolled-list h3")).toContainText("Hyppymestareita (1)");
+  await page.getByRole("button", { name: "Takaisin kalenteriin", exact: true }).click();
+  await page.reload();
+  await page.getByRole("button", { name: "Avaa 28.10.2026", exact: true }).click();
+  await expect(page.locator(".calendar-enrolled-list li")).toHaveText(["Ilkka Pihlaniemi"]);
+  await page.getByRole("button", { name: "Peru ilmoittautuminen", exact: true }).click();
+  await expect(page.locator(".calendar-enrolled-list li")).toHaveCount(0);
+  await page.reload();
+  await page.getByRole("button", { name: "Avaa 28.10.2026", exact: true }).click();
+  await expect(page.locator(".calendar-enrolled-list li")).toHaveCount(0);
+  await page.getByRole("button", { name: "Takaisin kalenteriin", exact: true }).click();
+  await page.getByRole("button", { name: "Avaa 30.10.2026", exact: true }).click();
+  await expect(page.locator(".calendar-enrolled-list > section li")).toHaveCount(17);
+});
+
+test("calendar opens this week with Friday/Saturday enrollments and switches to month", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-10-28T12:00:00Z"));
+  await page.goto("/");
+  await page.locator(".navigation-group > summary").filter({ hasText: "Käyttäjä" }).click();
+  await page.getByRole("link", { name: "Kalenteri", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Kalenteri", exact: true })).toBeVisible();
+  await expect(page.locator(".calendar-day")).toHaveCount(7);
+  const friday = page.locator(".calendar-day").filter({ has: page.locator('time[datetime="2026-10-30"]') });
+  const saturday = page.locator(".calendar-day").filter({ has: page.locator('time[datetime="2026-10-31"]') });
+  await expect(friday.locator("dd")).toHaveText(["3", "9", "5"]);
+  await expect(saturday.locator("dd")).toHaveText(["5", "16", "9"]);
+  await page.getByRole("tab", { name: "Kuukausi", exact: true }).click();
+  await expect(page.locator(".calendar-day")).toHaveCount(35);
+  await expect(friday.locator("dd")).toHaveText(["3", "9", "5"]);
+  await page.getByRole("button", { name: "Seuraava jakso", exact: true }).click();
+  await expect(page.locator(".calendar-date-navigation h2")).toHaveText("marraskuu 2026");
+  await page.getByRole("button", { name: "Tänään", exact: true }).click();
+  await page.getByRole("tab", { name: "Viikko", exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
