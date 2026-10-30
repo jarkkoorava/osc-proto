@@ -858,6 +858,7 @@ const App = () => {
   const [view, setView] = useState(currentView);
   const [giftCardsEnabled, setGiftCardsEnabled] = useState(false);
   useEffect(() => {
+    if (import.meta.env.MODE === 'pages') return;
     let active = true;
     fetch('/api/features', { cache: 'no-store' }).then(response => response.ok ? response.json() as Promise<{ giftCards?: boolean }> : { giftCards: false }).then(features => { if (active) setGiftCardsEnabled(features.giftCards === true); }).catch(() => {});
     return () => { active = false; };
@@ -981,7 +982,7 @@ const App = () => {
         <header className="app-header">
           <div className="brand">
             <img
-              src="/images/osc-header-color-black-extra-space.png"
+              src={`${import.meta.env.BASE_URL}images/osc-header-color-black-extra-space.png`}
               alt="OSC"
             />
             <span className="brand-divider" />
