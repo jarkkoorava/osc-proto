@@ -33,6 +33,7 @@ type Manifest = {
   groundHistoryVersion?: number;
   nextLoad: number;
   queueIds: string[];
+  queueMembershipVersion?: 1;
   queueJumps: Record<string, Jump>;
   licensePrices: Record<number, number>;
   emptyWeights: Record<string, number>;
@@ -47,6 +48,7 @@ const defaultManifest = (): Manifest => {
     groundHistoryVersion: 1,
     nextLoad: 2,
     queueIds: skydivers.slice(0, 15).map((person) => person.id),
+    queueMembershipVersion: 1,
     queueJumps: {},
     licensePrices: { ...LICENSE_JUMP_PRICES },
     emptyWeights: { ...AIRCRAFT_EMPTY_WEIGHTS },
@@ -145,9 +147,9 @@ const parseManifestData = (raw: string | null): Manifest => {
           !skydivers.some((person) => person.id === jump.skydiverId) ||
           loadMembers.has(jump.skydiverId) ||
           (loadFlightState(load) !== "Dropped" && seen.has(jump.skydiverId)) ||
-          !((jump.type === "Student" || jump.type === "Instructor") ? studentAltitudes : altitudes).includes(
+          (!(jump.type === 'Instructor' && jump.altitude === 0) && !((jump.type === "Student" || jump.type === "Instructor") ? studentAltitudes : altitudes).includes(
             jump.altitude,
-          ) ||
+          )) ||
           (jump.exercise !== undefined &&
             jump.exercise !== "" &&
             !studentExercises.some(
@@ -192,12 +194,14 @@ const parseManifestData = (raw: string | null): Manifest => {
         const jump = data.queueJumps?.[person.id];
         if (!jump || jump.skydiverId !== person.id ||
           !availableJumpTypes(person).includes(jump.type) ||
-          !((jump.type === "Student" || jump.type === "Instructor") ? studentAltitudes : altitudes).includes(jump.altitude) ||
+          (!(jump.type === 'Instructor' && jump.altitude === 0) && !((jump.type === "Student" || jump.type === "Instructor") ? studentAltitudes : altitudes).includes(jump.altitude)) ||
           (jump.exercise && !studentExercises.some((exercise) => exercise.name === jump.exercise))) return [];
         return [[person.id, { ...createJump(person.id), ...jump }]];
       })),
+      queueMembershipVersion: 1,
       queueIds: Array.isArray(data.queueIds)
-        ? [...new Set(data.queueIds.filter((id) => skydivers.some((person) => person.id === id)))]
+        ? [...new Set(data.queueIds.filter((id) => skydivers.some((person) => person.id === id) &&
+          (data.queueMembershipVersion === 1 || !data.loads.some(load => loadFlightState(load) === 'Dropped' && load.jumps.some(jump => jump.skydiverId === id)))))]
         : [...skydivers.filter((person) => !seen.has(person.id)).slice(0, 15).map((person) => person.id), ...seen],
       aircraftWeightsVersion: 2,
       emptyWeights:

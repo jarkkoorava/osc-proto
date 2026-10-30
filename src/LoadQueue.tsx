@@ -27,7 +27,7 @@ import {
   flightStates,
   loadFlightState,
 } from "./data/manifest";
-import type { Load } from "./data/manifest";
+import type { Jump, Load, Skydiver } from "./data/manifest";
 
 const altitude = (metres: number) => `${metres.toLocaleString("en-FI")} m`;
 type FlightStateControlsProps = {
@@ -276,20 +276,42 @@ const LoadQueueGroup = ({
 
 type QueueViewProps = {
   loads: Load[];
+  queue: { person: Skydiver; jump: Jump }[];
   emptyWeights: Record<string, number>;
   storageError: boolean;
 };
 
 export const QueueView = ({
   loads,
+  queue,
   emptyWeights,
   storageError,
 }: QueueViewProps) => {
   return (
     <main className="tv-view">
+      <div className="tv-content">
+        <aside className="tv-queue-sidebar" aria-label="Hyppääjäjono">
+          <h2>Hyppääjäjono <span className="count-badge">{queue.length}</span></h2>
+          {[
+            { label: 'Lisenssihyppääjät', student: false },
+            { label: 'Oppilaat', student: true },
+          ].map(group => {
+            const people = queue.filter(({ jump }) => ['Student', 'Tandem student'].includes(jump.type) === group.student);
+            return <section key={group.label} className={`tv-queue-group ${group.student ? 'tv-queue-students' : 'tv-queue-licensed'}`} aria-label={group.label}>
+              <h3>{group.label}<span>{people.length}</span></h3>
+              <ul>{people.map(({ person, jump }) => <li key={person.id}>
+                <span className="tv-queue-name">{person.name}{person.roles.includes('Instructor') && <span className="queue-role-tag instructor tv-queue-instructor" title="Hyppymestari">HM</span>}</span>
+                <span className="tv-queue-selection">{jump.type === 'Student'
+                  ? jump.exercise ?? ''
+                  : jump.type === 'License' && jump.altitude > 0 ? altitude(jump.altitude) : ''}</span>
+              </li>)}</ul>
+              {people.length === 0 && <p className="tv-queue-empty">Ei jonossa</p>}
+            </section>;
+          })}
+        </aside>
+        <div className="tv-loads-area">
       <header className="tv-header">
         <div>
-          <p className="eyebrow">OSC MANIFEST / POKAJÄRJESTYS</p>
           <h1>Pokajono</h1>
         </div>
         <div className="tv-tools">
@@ -312,12 +334,9 @@ export const QueueView = ({
             {roleLabels[role]}
           </span>
         ))}
-        <span className="tv-sync">
-          {storageError
-            ? "Paikallinen synkronointi ei ole käytettävissä"
-            : "Päivittyy pokasuunnittelusta"}
-        </span>
+        {storageError && <span className="tv-sync">Paikallinen synkronointi ei ole käytettävissä</span>}
       </div>
+
       {loads.length === 0 ? (
         <div className="tv-empty">
           <h2>Odotetaan seuraavaa pokaa</h2>
@@ -364,7 +383,6 @@ export const QueueView = ({
                     >
                       <span className="tv-person">
                         <strong>{person.name}</strong>
-                        <small>{roleLabels[jumpRole(jump)]}</small>
                       </span>
                       <span className="tv-altitude">
                         {altitude(jump.altitude)}
@@ -377,6 +395,8 @@ export const QueueView = ({
           ))}
         </div>
       )}
+        </div>
+      </div>
     </main>
   );
 };

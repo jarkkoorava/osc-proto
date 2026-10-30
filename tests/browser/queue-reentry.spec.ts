@@ -1,0 +1,38 @@
+﻿import {test,expect} from '@playwright/test';
+import {createJump,createLoad,skydivers,AIRCRAFT_EMPTY_WEIGHTS,LICENSE_JUMP_PRICES} from '../../src/data/manifest';
+const person=skydivers.find(person=>createJump(person.id).type==='License')!;
+const completed={...createLoad(1,'load-reentry-old'),status:'queued',hasBeenSaved:true,flightState:'Dropped',jumpedAt:new Date().toISOString(),jumps:[{...createJump(person.id),altitude:3500,returnedByPlane:true}]};
+const data={aircraftWeightsVersion:2,demoHistoryVersion:6,groundHistoryVersion:1,loads:[completed,createLoad(2,'load-reentry-next')],history:[],nextLoad:3,queueIds:[person.id],queueJumps:{[person.id]:completed.jumps[0]},emptyWeights:AIRCRAFT_EMPTY_WEIGHTS,licensePrices:LICENSE_JUMP_PRICES};
+
+test('rejoin after completed load, jump again, and preserve both jumps and charges',async({page})=>{
+ await page.addInitScript(data=>{if(!localStorage.getItem('osc-manifest-v3'))localStorage.setItem('osc-manifest-v3',JSON.stringify(data));},data);
+ await page.goto('/#account');
+ await page.locator('.member-search select').selectOption(person.id);
+ const panel=page.locator('.account-queue');
+ await expect(panel.getByRole('button',{name:'Liity jonoon'})).toBeVisible();
+ await panel.getByRole('combobox',{name:'Jonon hyppykorkeus',exact:true}).selectOption('1500');
+ await panel.getByRole('button',{name:'Liity jonoon'}).click();
+ await expect(panel.getByRole('status')).toContainText('Olet jonossa');
+ await page.reload();await page.locator('.member-search select').selectOption(person.id);
+ await expect(panel.getByRole('status')).toContainText('1 500 m');
+ await page.goto('/#planning');
+ const picker=page.locator('.add-jumper-row input[role=combobox]');
+ await picker.fill(person.name);await picker.press('Enter');
+ const state=await page.evaluate(()=>JSON.parse(localStorage.getItem('osc-manifest-v3')!));
+ expect(state.loads.find((load:{id:string})=>load.id===completed.id).jumps).toEqual(completed.jumps);
+ expect(state.loads.find((load:{id:string})=>load.id==='load-reentry-next').jumps[0]).toMatchObject({skydiverId:person.id,altitude:1500,returnedByPlane:false});
+ await page.goto('/#account');await page.locator('.member-search select').selectOption(person.id);
+ await expect(panel.getByRole('status')).toContainText('Olet pokassa 2');
+ await expect(panel.getByRole('button',{name:'Liity jonoon'})).toHaveCount(0);
+ await page.goto('/#planning');
+ await page.getByRole('button',{name:'Tallenna poka 2',exact:true}).click();
+ for(let i=0;i<3;i++)await page.getByRole('button',{name:'Pokan seuraava tila 2',exact:true}).click();
+ await page.goto('/#account');await page.locator('.member-search select').selectOption(person.id);
+ await expect(panel.getByRole('button',{name:'Liity jonoon'})).toBeVisible();
+ const after=await page.evaluate(()=>JSON.parse(localStorage.getItem('osc-manifest-v3')!));
+ const charges=after.transactions.filter((entry:{memberId:string;kind:string})=>entry.memberId===person.id && entry.kind==='jump');
+ expect(charges.map((entry:{amountCents:number})=>entry.amountCents)).toEqual([-3200,-2300]);
+ expect(after.queueIds).not.toContain(person.id);
+ await page.reload();await page.locator('.member-search select').selectOption(person.id);
+ await expect(panel.getByRole('button',{name:'Liity jonoon'})).toBeVisible();
+});

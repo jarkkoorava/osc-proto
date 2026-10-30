@@ -2,10 +2,13 @@ import { useRef, useState } from "react";
 import type { Member } from "./data/members";
 import { memberBalance } from "./data/transactions";
 import type { Transaction } from "./data/transactions";
-import { roleClass } from "./data/manifest";
+import { loadFlightState, roleClass } from "./data/manifest";
 import { roleLabels } from "./fi";
+import { AccountQueue } from './AccountQueue';
+import type { Jump, Load } from './data/manifest';
 
-export const AccountView = ({ members, transactions, deposit }: {
+export const AccountView = ({ members, transactions, deposit, queue, loads, joinQueue }: {
+  queue: Jump[]; loads: Load[]; joinQueue: (jump: Jump) => void;
   members: Member[]; transactions: Transaction[]; deposit: (memberId: string, amountCents: number) => void;
 }) => {
   const [memberId, setMemberId] = useState(members[0]?.id ?? "");
@@ -19,6 +22,8 @@ export const AccountView = ({ members, transactions, deposit }: {
     <label className="member-search">Jäsen<select aria-label="Jäsen" value={memberId} onChange={(event) => setMemberId(event.target.value)}>
       {[...members].sort((a, b) => a.name.localeCompare(b.name, "fi")).map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
     </select></label>
+    {members.find(member => member.id === memberId) && <AccountQueue key={memberId} member={members.find(member => member.id === memberId)!} queue={queue}
+      queueJump={queue.find(jump => jump.skydiverId === memberId)} load={loads.find(load => loadFlightState(load) !== 'Dropped' && load.jumps.some(jump => jump.skydiverId === memberId))} join={joinQueue} />}
     <section className="account-balance"><h2>Nykyinen saldo</h2><strong className={balance < 0 ? "waiver-error" : ""}>{euro(balance)}</strong>
       <button className="primary-button" onClick={() => { setAmount(""); dialog.current?.showModal(); }}>Lisää saldoa</button></section>
     <div className="members-table-wrap"><table className="members-table"><thead><tr><th>Päivämäärä</th><th>Tapahtuma</th><th>Hyppääjän tyyppi</th><th>Korkeus</th><th>Summa</th></tr></thead>

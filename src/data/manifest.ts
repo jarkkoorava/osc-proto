@@ -6,7 +6,7 @@ export type Skydiver = Member;
 export type Jump = {
   returnedByPlane?: boolean;
   skydiverId: string;
-  altitude: number;
+  altitude: number; // 0 means an instructor's queued/planned altitude is not selected yet.
   type: string;
   instructorId: string;
   exercise?: string;
@@ -264,7 +264,7 @@ export const jumpPrice = (jump: Jump, jumps: Jump[], licensePrices = LICENSE_JUM
     )
   )
     return 0;
-  return LICENSE_JUMP_PRICES[jump.altitude];
+  return LICENSE_JUMP_PRICES[jump.altitude] ?? null;
 };
 export const hasInstructor = (jump: Jump, jumps: Jump[]): boolean => {
   return jumps.some(
@@ -300,7 +300,7 @@ export const loadWeights = (load: Load, emptyWeight: number) => {
   };
 };
 
-// A jumper belongs to the queue or exactly one load. Preserve settings when moving.
+// A jumper belongs to the queue or one active load; completed jumps stay intact.
 export const moveSkydiver = (
   loads: Load[],
   skydiverId: string,
@@ -309,9 +309,10 @@ export const moveSkydiver = (
   queueJumps: Record<string, Jump> = {},
 ): Load[] => {
   const source = loads.find((load) =>
-    load.jumps.some((jump) => jump.skydiverId === skydiverId),
+    loadFlightState(load) !== 'Dropped' && load.jumps.some((jump) => jump.skydiverId === skydiverId),
   );
   const target = loads.find((load) => load.id === targetLoadId);
+  if (target && loadFlightState(target) === 'Dropped') return loads;
   if (target?.groundPersonId === skydiverId) return loads;
   if (source?.status === "queued" || target?.status === "queued") return loads;
   if (targetLoadId !== null && !target) return loads;
@@ -330,6 +331,7 @@ export const moveSkydiver = (
   )
     return loads;
   return loads.map((load) => {
+    if (loadFlightState(load) === 'Dropped') return load;
     const jumps = load.jumps.filter((item) => item.skydiverId !== skydiverId);
     if (load.id === targetLoadId) {
       const index = beforeId

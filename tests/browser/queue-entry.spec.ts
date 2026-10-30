@@ -28,7 +28,7 @@ test("queue starts with 15 and supports enrollment and direct load entry", async
   const outsider = skydivers.slice(15).find((person) => createJump(person.id).type !== "Student")!;
   await page.getByRole("button", { name: "+ Lisää", exact: true }).click();
   await page.getByRole("combobox", { name: "Lisää hyppääjä jonoon", exact: true }).fill(outsider.name);
-  await page.getByRole("option", { name: `${outsider.name} · ${outsider.weight} kg`, exact: true }).click();
+  await page.locator("#queue-add-popup").getByRole("option", { name: outsider.name, exact: true }).click();
   await page.getByLabel("Jonoon lisättävän hyppääjän korkeus").selectOption("1500");
   await page.getByRole("button", { name: "Lisää jonoon", exact: true }).click();
   await expect(page.locator(".queue .person-card")).toHaveCount(16);
@@ -56,7 +56,7 @@ test("student queue exercise persists through reload and drag to load", async ({
   await page.goto("/");
   await page.getByRole("button", { name: "+ Lisää", exact: true }).click();
   await page.getByRole("combobox", { name: "Lisää hyppääjä jonoon", exact: true }).fill(student.name);
-  await page.getByRole("option", { name: `${student.name} · ${student.weight} kg`, exact: true }).click();
+  await page.locator("#queue-add-popup").getByRole("option", { name: student.name, exact: true }).click();
   await page.getByLabel("Jonoon lisättävän oppilaan harjoitus").selectOption("Kuvunkäsittely");
   await page.getByRole("button", { name: "Lisää jonoon", exact: true }).click();
   await page.reload();

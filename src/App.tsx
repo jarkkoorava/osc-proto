@@ -1,3 +1,4 @@
+import { JumperPicker } from "./JumperPicker";
 import { replaceHistoryLoad } from "./data/historyEditing";
 import { useEffect, useState } from "react";
 import type { SetStateAction } from "react";
@@ -154,9 +155,10 @@ type PersonCardProps = {
   person: Skydiver;
   minutes: number;
   jump: Jump;
+  remove: () => void;
 };
 
-const PersonCard = ({ person, minutes, jump }: PersonCardProps) => {
+const PersonCard = ({ person, minutes, jump, remove }: PersonCardProps) => {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: person.id,
   });
@@ -189,7 +191,7 @@ const PersonCard = ({ person, minutes, jump }: PersonCardProps) => {
         <span className="person-detail queue-jump-detail">
           {jumpRole(jump) === "Student"
             ? jump.exercise || "Harjoitus valitsematta"
-            : `${jump.altitude.toLocaleString("en-FI")} m`}
+            : jump.altitude === 0 ? 'Korkeus valitsematta' : `${jump.altitude.toLocaleString("en-FI")} m`}
         </span>
         <span className="person-detail">
           {person.weight} kg -{" "}
@@ -202,6 +204,12 @@ const PersonCard = ({ person, minutes, jump }: PersonCardProps) => {
           </span>
         </span>
       </div>
+      <button type="button" className="queue-remove-person" onClick={remove}
+        aria-label={`Poista jonosta: ${person.name}`} title="Poista jonosta">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" />
+        </svg>
+      </button>
     </div>
   );
 };
@@ -210,55 +218,11 @@ type QueueProps = {
   queueTimes: Record<string, number>;
   available: Skydiver[];
   add: (jump: Jump) => void;
+  remove: (id: string) => void;
   queueJumps: Record<string, Jump>;
 };
 
-const JumperPicker = ({ people, label, onSelect, selectedId, emptyOption }: {
-  people: Skydiver[];
-  label: string;
-  onSelect: (id: string) => void;
-  selectedId?: string;
-  emptyOption?: string;
-}) => {
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState({ left: 0, top: 0, width: 0 });
-  const matches = people.filter((person) => person.name.toLocaleLowerCase("fi").includes(query.toLocaleLowerCase("fi")));
-  const showEmpty = emptyOption && emptyOption.toLocaleLowerCase("fi").includes(query.toLocaleLowerCase("fi"));
-  const select = (id: string) => {
-    onSelect(id);
-    setQuery("");
-    setOpen(false);
-  };
-  return <div className="jumper-picker" onBlur={(event) => {
-    if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
-  }}>
-    <input role="combobox" aria-label={label} placeholder={label}
-      aria-expanded={open} aria-controls={`${label}-options`} aria-autocomplete="list"
-      value={!open && selectedId !== undefined ? people.find((person) => person.id === selectedId)?.name ?? emptyOption ?? "" : query} onFocus={(event) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        setPosition({ left: rect.left, top: rect.bottom + 4, width: rect.width });
-        setOpen(true);
-      }}
-      onChange={(event) => { setQuery(event.target.value); setOpen(true); }}
-      onKeyDown={(event) => {
-        if ((event.key === "Enter" || event.key === "ArrowDown") && (matches.length || showEmpty)) {
-          event.preventDefault();
-          if (event.key === "Enter") select(showEmpty ? "" : matches[0].id);
-          else event.currentTarget.parentElement?.querySelector<HTMLButtonElement>("button")?.focus();
-        }
-        if (event.key === "Escape") setOpen(false);
-      }} />
-    {open && <div className="jumper-options" style={{ position: "fixed", ...position }} role="listbox" id={`${label}-options`} aria-label={label}>
-      {showEmpty && <button type="button" role="option" aria-selected={selectedId === ""} onClick={() => select("")}>{emptyOption}</button>}
-      {matches.map((person) => <button type="button" role="option" aria-selected={false} key={person.id}
-        onClick={() => select(person.id)}>{person.name}{selectedId === undefined ? ` · ${person.weight} kg` : ""}</button>)}
-      {!matches.length && !showEmpty && <span>Ei hakutuloksia</span>}
-    </div>}
-  </div>;
-};
-
-const Queue = ({ people, queueTimes, available, add, queueJumps }: QueueProps) => {
+const Queue = ({ people, queueTimes, available, add, remove, queueJumps }: QueueProps) => {
   const [tab, setTab] = useState<"role" | "time">("role");
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState<Jump | null>(null);
@@ -283,8 +247,13 @@ const Queue = ({ people, queueTimes, available, add, queueJumps }: QueueProps) =
           <dialog id="queue-add-popup" className="queue-add-popup" style={popupPosition}
             aria-label="Lisää hyppääjä jonoon" onClose={() => setAdding(false)}>
             {adding && <>
-              <JumperPicker people={available} label="Lisää hyppääjä jonoon" onSelect={(id) => setDraft(createJump(id))} />
+              <JumperPicker showJumpTypes people={available} label="Lisää hyppääjä jonoon" onSelect={(id) => setDraft(createJump(id))} />
               {draft && <p className="queue-selected-name">{findSkydiver(draft.skydiverId).name}</p>}
+              {draft && availableJumpTypes(findSkydiver(draft.skydiverId)).length > 1 && <label>Hyppääjän tyyppi
+                <select aria-label="Jonoon lisättävän hyppääjän tyyppi" value={draft.type} onChange={event => setDraft({ ...createJump(draft.skydiverId), type: event.target.value })}>
+                  {availableJumpTypes(findSkydiver(draft.skydiverId)).map(type => <option key={type} value={type}>{jumpTypeLabel(type)}</option>)}
+                </select>
+              </label>}
               {draft?.type === "Student" ? <label>Harjoitus
                 <select aria-label="Jonoon lisättävän oppilaan harjoitus" value={draft.exercise ?? ""}
                   onChange={(event) => {
@@ -298,6 +267,7 @@ const Queue = ({ people, queueTimes, available, add, queueJumps }: QueueProps) =
               </label> : <label>Hyppykorkeus
                 <select aria-label="Jonoon lisättävän hyppääjän korkeus" disabled={!draft} value={draft?.altitude ?? 3500}
                   onChange={(event) => { if (draft) setDraft({ ...draft, altitude: Number(event.target.value) }); }}>
+                  {draft?.type === 'Instructor' && <option value={0}>Ei valittu</option>}
                   {altitudes.map((altitude) => <option key={altitude} value={altitude}>{altitude.toLocaleString("en-FI")} m</option>)}
                 </select>
               </label>}
@@ -348,6 +318,7 @@ const Queue = ({ people, queueTimes, available, add, queueJumps }: QueueProps) =
                 <PersonCard
                   key={person.id}
                   person={person}
+                  remove={() => remove(person.id)}
                   jump={queueJumps[person.id] ?? createJump(person.id)}
                   minutes={queueTimes[person.id]}
                 />
@@ -367,6 +338,7 @@ const Queue = ({ people, queueTimes, available, add, queueJumps }: QueueProps) =
                     <PersonCard
                       key={person.id}
                       person={person}
+                      remove={() => remove(person.id)}
                       jump={queueJumps[person.id] ?? createJump(person.id)}
                       minutes={queueTimes[person.id]}
                     />
@@ -470,7 +442,7 @@ const JumpRow = ({ jump, load, update, remove, licensePrices }: JumpRowProps) =>
           <select
             aria-label={`Hyppylaji: ${person.name}`}
             value={jump.type}
-            onChange={(event) => update({ type: event.target.value })}
+            onChange={(event) => update({ type: event.target.value, ...(jump.altitude === 0 && event.target.value !== 'Instructor' ? { altitude: 3500 } : {}) })}
           >
             {availableJumpTypes(person).map((type) => (
               <option
@@ -497,6 +469,7 @@ const JumpRow = ({ jump, load, update, remove, licensePrices }: JumpRowProps) =>
           value={jump.altitude}
           onChange={(event) => update({ altitude: Number(event.target.value) })}
         >
+          {jump.type === 'Instructor' && jump.altitude === 0 && <option value={0}>Valitse korkeus</option>}
           {(jumpRole(jump) === "Student" ? studentAltitudes : altitudes).map(
             (altitude) => (
               <option key={altitude} value={altitude}>
@@ -593,6 +566,7 @@ const LoadCard = ({
   const tandemAlerts = tandemWarnings(load.jumps);
   const overweight = weights.remaining < 0;
   const groundError = groundPersonError(load);
+  const altitudeMissing = load.jumps.some(jump => jump.altitude === 0);
   return (
     <section
       ref={setNodeRef}
@@ -630,7 +604,7 @@ const LoadCard = ({
           <button
             className="secondary-button save-load-button"
             onClick={queueLoad}
-            disabled={load.jumps.length === 0 || Boolean(groundError)}
+            disabled={load.jumps.length === 0 || Boolean(groundError) || altitudeMissing}
             aria-label={`Tallenna poka ${load.number}`}
           >
             Tallenna poka
@@ -754,9 +728,10 @@ const LoadCard = ({
               <p>Vedä hyppääjiä jonosta</p>
             </div>
           )}
-          {(missing.length > 0 || overweight || tandemAlerts.length > 0 || groundError) && (
+          {(missing.length > 0 || overweight || tandemAlerts.length > 0 || groundError || altitudeMissing) && (
             <div className="load-warnings" role="status">
               {groundError && <p>⚠ {groundError}</p>}
+              {altitudeMissing && <p>Valitse hyppymestarin korkeus ennen pokan tallentamista.</p>}
               {tandemAlerts.map((message) => (
                 <p key={message}>⚠ {message}</p>
               ))}
@@ -871,11 +846,15 @@ const App = () => {
   const setLoads = (action: SetStateAction<Load[]>) => {
     setManifest((current) => {
       const nextLoads = typeof action === "function" ? action(current.loads) : action;
+      const finished = new Set(nextLoads.filter(load => loadFlightState(load) === 'Dropped' &&
+        current.loads.some(previous => previous.id === load.id && loadFlightState(previous) !== 'Dropped'))
+        .flatMap(load => load.jumps.map(jump => jump.skydiverId)));
       return {
         ...current,
         loads: nextLoads,
+        queueIds: current.queueIds.filter(id => !finished.has(id)),
         queueJumps: { ...current.queueJumps, ...Object.fromEntries(
-          [...current.loads, ...nextLoads].flatMap((load) => load.jumps.map((jump) => [jump.skydiverId, jump])),
+          [...current.loads, ...nextLoads].filter(load => loadFlightState(load) !== 'Dropped').flatMap((load) => load.jumps.map((jump) => [jump.skydiverId, jump])),
         ) },
       };
     });
@@ -896,7 +875,7 @@ const App = () => {
     useSensor(KeyboardSensor, { coordinateGetter: keyboardCoordinates }),
   );
   const assigned = new Set(
-    loads.flatMap((load) => load.jumps.map((jump) => jump.skydiverId)),
+    loads.filter(load => loadFlightState(load) !== 'Dropped').flatMap((load) => load.jumps.map((jump) => jump.skydiverId)),
   );
   const queued = skydivers.filter((person) => manifest.queueIds.includes(person.id) && !assigned.has(person.id));
   const outsideQueue = skydivers.filter((person) => !manifest.queueIds.includes(person.id) && !assigned.has(person.id));
@@ -959,6 +938,7 @@ const App = () => {
   if (view === "queue")
     return (
       <QueueView
+        queue={queued.map(person => ({ person, jump: manifest.queueJumps[person.id] ?? createJump(person.id) }))}
         loads={loads.filter(
           (load) => load.status === "queued" || load.hasBeenSaved,
         )}
@@ -1010,7 +990,11 @@ const App = () => {
             Jononäkymä
           </a>
         </header>
-        {view === "gift-cards" ? (giftCardsEnabled ? <GiftCards /> : <main className="members-view"><h1>N?kym? ei ole k?ytett?viss?</h1></main>) : view === "calendar" ? <CalendarView members={memberRegistry.members} /> : view === "account" ? <AccountView members={memberRegistry.members} transactions={manifest.transactions ?? []} deposit={(memberId, amountCents) => {
+        {view === "gift-cards" ? (giftCardsEnabled ? <GiftCards /> : <main className="members-view"><h1>N?kym? ei ole k?ytett?viss?</h1></main>) : view === "calendar" ? <CalendarView members={memberRegistry.members} /> : view === "account" ? <AccountView members={memberRegistry.members} queue={queued.map(person => manifest.queueJumps[person.id] ?? createJump(person.id))} loads={loads}
+          joinQueue={(jump) => setManifest(current => {
+            if (current.queueIds.includes(jump.skydiverId) || current.loads.some(load => loadFlightState(load) !== 'Dropped' && load.jumps.some(item => item.skydiverId === jump.skydiverId))) return current;
+            return { ...current, queueIds: [...current.queueIds, jump.skydiverId], queueJumps: { ...current.queueJumps, [jump.skydiverId]: jump } };
+          })} transactions={manifest.transactions ?? []} deposit={(memberId, amountCents) => {
           if (!Number.isSafeInteger(amountCents) || amountCents <= 0) return;
           const transaction = { id: `deposit-${crypto.randomUUID()}`, memberId, at: new Date().toISOString(), amountCents, kind: "deposit" as const, description: "Talletus" };
           setManifest((current) => ({ ...current, transactions: [...(current.transactions ?? []), transaction] }));
@@ -1057,7 +1041,8 @@ const App = () => {
           />
         ) : (
           <div className="workspace">
-            <Queue people={queued} queueTimes={queueTimes} available={outsideQueue} add={enroll} queueJumps={manifest.queueJumps} />
+            <Queue people={queued} queueTimes={queueTimes} available={outsideQueue} add={enroll} queueJumps={manifest.queueJumps}
+              remove={(id) => setManifest(current => ({ ...current, queueIds: current.queueIds.filter(memberId => memberId !== id) }))} />
             <main className="planner">
               <div className="planner-content">
               <div className="planner-heading">
@@ -1102,6 +1087,10 @@ const App = () => {
                     load={load}
                     available={[...queued, ...outsideQueue]}
                     addJump={(id) => {
+                      if (loadFlightState(load) === 'Dropped') {
+                        updateLoad(load.id, { jumps: [...load.jumps, { ...(manifest.queueJumps[id] ?? createJump(id)), returnedByPlane: false }] });
+                        return;
+                      }
                       setManifest((current) => ({
                         ...current,
                         queueIds: [...new Set([...current.queueIds, id])],
@@ -1138,7 +1127,8 @@ const App = () => {
                       )
                     }
                     removeJump={(id) => {
-                      setLoads((current) => moveSkydiver(current, id, null));
+                      if (loadFlightState(load) === 'Dropped') updateLoad(load.id, { jumps: load.jumps.filter(jump => jump.skydiverId !== id) });
+                      else setLoads((current) => moveSkydiver(current, id, null));
                       setNotice("");
                     }}
                     deleteLoad={() => {
@@ -1154,11 +1144,17 @@ const App = () => {
                 loads={queuedLoads}
                 emptyWeights={emptyWeights}
                 editing={planningLoads.length > 0}
-                changeState={(id, direction) =>
+                changeState={(id, direction) => {
+                  const restoring = loads.find(load => load.id === id);
+                  if (direction < 0 && restoring && loadFlightState(restoring) === 'Dropped' &&
+                    loads.some(other => other.id !== id && loadFlightState(other) !== 'Dropped' && other.jumps.some(jump => restoring.jumps.some(previous => previous.skydiverId === jump.skydiverId)))) {
+                    setNotice('Hyppääjä on jo toisessa aktiivisessa pokassa. Poista päällekkäinen varaus ennen pokan palauttamista.');
+                    return;
+                  }
                   setLoads((current) =>
                     changeFlightState(current, id, direction),
-                  )
-                }
+                  );
+                }}
                 edit={(id) => {
                   if (planningLoads.length > 0) return;
                   updateLoad(id, { status: "planning", hasBeenSaved: true });
